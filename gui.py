@@ -2,8 +2,11 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from pathlib import Path
 import threading
+import subprocess
+import sys
 
 from organizer import process_folder, undo_last_run
+import classifier
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -33,6 +36,7 @@ class OrganizerApp:
         self._build_header()
         self._build_input_row()
         self._build_action_row()
+        self._build_config_row()
         self._build_status_row()
         self._build_log_area()
 
@@ -104,6 +108,67 @@ class OrganizerApp:
             command=self.run_undo
         )
         self.undo_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+    def _build_config_row(self):
+        frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        frame.pack(fill="x", padx=24, pady=(10, 0))
+
+        self.config_status_label = ctk.CTkLabel(
+            frame, text="", font=ctk.CTkFont(size=11), text_color="#718096", anchor="w"
+        )
+        self.config_status_label.pack(side="left", fill="x", expand=True)
+
+        ctk.CTkButton(
+            frame, text="⚙ Edit Categories", width=140, height=30, corner_radius=8,
+            font=ctk.CTkFont(size=11), fg_color="#2D3748", hover_color="#4A5568",
+            command=self.open_config
+        ).pack(side="left", padx=(8, 0))
+
+        ctk.CTkButton(
+            frame, text="↻ Reload Config", width=130, height=30, corner_radius=8,
+            font=ctk.CTkFont(size=11), fg_color="#2D3748", hover_color="#4A5568",
+            command=self.reload_config
+        ).pack(side="left", padx=(8, 0))
+
+        self._refresh_config_status()
+
+    def _refresh_config_status(self):
+        status = classifier.get_config_status()
+        if status["error"]:
+            text = f"⚠ Config issue: {status['error']} — using built-in defaults"
+            color = "#F6AD55"
+        else:
+            text = f"Categories loaded from: {status['source']} ({status['category_count']} categories)"
+            color = "#718096"
+        self.config_status_label.configure(text=text, text_color=color)
+
+    def open_config(self):
+        config_path = classifier.CONFIG_PATH
+        if not config_path.exists():
+            messagebox.showwarning(
+                "Config Not Found",
+                f"No config.yaml found at:\n{config_path}\n\nThe app is using built-in defaults."
+            )
+            return
+        try:
+            if sys.platform == "win32":
+                import os
+                os.startfile(str(config_path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(config_path)])
+            else:
+                subprocess.Popen(["xdg-open", str(config_path)])
+        except Exception as exc:
+            messagebox.showerror("Could Not Open File", f"Please open this file manually:\n{config_path}\n\n{exc}")
+
+    def reload_config(self):
+        classifier.reload_config()
+        self._refresh_config_status()
+        status = classifier.get_config_status()
+        if status["error"]:
+            messagebox.showwarning("Config Reloaded With Issues", status["error"])
+        else:
+            messagebox.showinfo("Config Reloaded", f"Loaded {status['category_count']} categories from config.yaml.")
 
     def _build_status_row(self):
         frame = ctk.CTkFrame(self.root, fg_color="transparent")
