@@ -3,7 +3,7 @@ import shutil
 import datetime
 from pathlib import Path
 
-from extractor import extract_text, extract_date, extract_sender, clean_for_filename
+from extractor import extract_text, extract_date, extract_sender, clean_for_filename, compute_content_hash
 from classifier import classify
 
 
@@ -44,19 +44,37 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
 
     log_lines = []
     move_records = []
+    seen_hashes = {}
 
     for pdf_path in pdf_files:
         text, used_ocr = extract_text(pdf_path)
-        category = classify(text)
-        date = extract_date(text)
-        sender = extract_sender(text)
+        content_hash = compute_content_hash(text, pdf_path)
 
-        new_name = build_new_name(category, date, sender, pdf_path.stem)
+        is_duplicate = content_hash is not None and content_hash in seen_hashes
+
+        if is_duplicate:
+            original_ref = seen_hashes[content_hash]
+            category = "Duplicates"
+            original_stem = Path(original_ref).stem
+            new_name = unique_path(
+                source / category / f"Duplicate_of_{clean_for_filename(original_stem)}{pdf_path.suffix}"
+            ).name
+            dup_tag = " [DUPLICATE]"
+        else:
+            category = classify(text)
+            date = extract_date(text)
+            sender = extract_sender(text)
+            new_name = build_new_name(category, date, sender, pdf_path.stem)
+            dup_tag = ""
+
         dest_dir = source / category
         dest_path = unique_path(dest_dir / new_name)
 
+        if not is_duplicate and content_hash is not None:
+            seen_hashes[content_hash] = dest_path.name
+
         ocr_tag = " [OCR]" if used_ocr else ""
-        action = f"{pdf_path.name}{ocr_tag}  ->  {category}/{dest_path.name}"
+        action = f"{pdf_path.name}{ocr_tag}{dup_tag}  ->  {category}/{dest_path.name}"
         line = ("[DRY RUN] " if dry_run else "[MOVED]   ") + action
         if on_action:
             on_action(line)

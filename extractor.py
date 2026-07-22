@@ -1,4 +1,5 @@
 import re
+import hashlib
 import pdfplumber
 
 import os
@@ -86,3 +87,14 @@ def clean_for_filename(text):
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"\s+", "_", text.strip())
     return text[:30] if text else "Unknown"
+
+
+def compute_content_hash(text, pdf_path):
+    if text and len(text.strip()) >= 20:
+        normalized = re.sub(r"\s+", " ", text.strip().lower())
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    try:
+        with open(pdf_path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        return None

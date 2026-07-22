@@ -15,6 +15,7 @@ CATEGORY_COLORS = {
     "Contract": "#F687B3",
     "Report": "#B794F4",
     "Offer Letter": "#68D391",
+    "Duplicates": "#FC8181",
     "Unsorted": "#A0AEC0",
 }
 
