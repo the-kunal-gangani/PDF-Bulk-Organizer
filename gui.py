@@ -3,7 +3,7 @@ from tkinter import filedialog, messagebox
 from pathlib import Path
 import threading
 
-from organizer import process_folder
+from organizer import process_folder, undo_last_run
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -94,7 +94,15 @@ class OrganizerApp:
             fg_color="#2F855A", hover_color="#276749",
             command=self.run_organize
         )
-        self.organize_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        self.organize_btn.pack(side="left", fill="x", expand=True, padx=(8, 8))
+
+        self.undo_btn = ctk.CTkButton(
+            row, text="↩  Undo Last Run", height=46, corner_radius=12,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#9C4221", hover_color="#7B341E",
+            command=self.run_undo
+        )
+        self.undo_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
     def _build_status_row(self):
         frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -166,6 +174,7 @@ class OrganizerApp:
         state = "normal" if enabled else "disabled"
         self.dry_run_btn.configure(state=state)
         self.organize_btn.configure(state=state)
+        self.undo_btn.configure(state=state)
 
     def run_dry_run(self):
         folder = self._validate_folder()
@@ -184,6 +193,52 @@ class OrganizerApp:
         if not confirm:
             return
         self._run_in_thread(folder, dry_run=False)
+
+    def run_undo(self):
+        folder = self._validate_folder()
+        if not folder or self.is_running:
+            return
+        confirm = messagebox.askyesno(
+            "Confirm Undo",
+            "This will restore files from the last real Organize run back to their original names and location.\n\nProceed?"
+        )
+        if not confirm:
+            return
+
+        self.is_running = True
+        self._set_buttons_enabled(False)
+        self._clear_log()
+        self.progress.start()
+        self.status_label.configure(text="Undoing last run...", text_color="#F6AD55")
+
+        def worker():
+            log_path = str(folder / "organizer_log.txt")
+            restored, skipped, error = undo_last_run(folder, log_path)
+            self.root.after(0, self._finish_undo, restored, skipped, error)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_undo(self, restored, skipped, error):
+        self.progress.stop()
+        self.progress.set(0)
+        self._set_buttons_enabled(True)
+        self.is_running = False
+
+        if error:
+            self._append_log(error)
+            self.status_label.configure(text=error, text_color="#FC8181")
+            return
+
+        for line in restored:
+            self._append_log(f"[RESTORED] {line}")
+        for line in skipped:
+            self._append_log(f"[SKIPPED]  {line}")
+
+        self.status_label.configure(
+            text=f"Undo complete — {len(restored)} restored, {len(skipped)} skipped.",
+            text_color="#F6AD55"
+        )
+        messagebox.showinfo("Undo Complete", f"Restored {len(restored)} file(s).\nSkipped {len(skipped)} file(s).")
 
     def _run_in_thread(self, folder, dry_run):
         self.is_running = True

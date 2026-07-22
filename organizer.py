@@ -1,5 +1,6 @@
 import argparse
 import shutil
+import datetime
 from pathlib import Path
 
 from extractor import extract_text, extract_date, extract_sender, clean_for_filename
@@ -42,6 +43,7 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
         return []
 
     log_lines = []
+    move_records = []
 
     for pdf_path in pdf_files:
         text, used_ocr = extract_text(pdf_path)
@@ -64,13 +66,75 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
 
         if not dry_run:
             dest_dir.mkdir(exist_ok=True)
+            original_name = pdf_path.name
             shutil.move(str(pdf_path), str(dest_path))
+            move_records.append(f"{original_name}::{category}/{dest_path.name}")
 
-    if not dry_run and log_path:
+    if not dry_run and log_path and move_records:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write("\n".join(log_lines) + "\n")
+            f.write(f"### RUN {timestamp} ###\n")
+            f.write("\n".join(move_records) + "\n")
 
     return log_lines
+
+
+def undo_last_run(source_dir, log_path):
+    source = Path(source_dir)
+    log_file = Path(log_path)
+
+    if not log_file.exists():
+        return [], [], "No log file found — nothing to undo."
+
+    lines = log_file.read_text(encoding="utf-8").splitlines()
+    run_indices = [i for i, line in enumerate(lines) if line.startswith("### RUN")]
+
+    if not run_indices:
+        return [], [], "No recorded runs found in the log."
+
+    last_start = run_indices[-1]
+    batch = [line for line in lines[last_start + 1:] if line.strip()]
+
+    if not batch:
+        return [], [], "The last run had no file moves to undo."
+
+    restored = []
+    skipped = []
+
+    for record in batch:
+        if "::" not in record:
+            continue
+        original_name, rel_dest = record.split("::", 1)
+        dest_path = source / rel_dest
+        original_path = source / original_name
+
+        if not dest_path.exists():
+            skipped.append(f"Missing (already moved/deleted): {rel_dest}")
+            continue
+        if original_path.exists():
+            skipped.append(f"Skipped, name already taken: {original_name}")
+            continue
+
+        shutil.move(str(dest_path), str(original_path))
+        restored.append(f"{rel_dest}  ->  {original_name}")
+
+    for record in batch:
+        if "::" not in record:
+            continue
+        _, rel_dest = record.split("::", 1)
+        dest_dir = source / Path(rel_dest).parent
+        try:
+            if dest_dir.exists() and not any(dest_dir.iterdir()):
+                dest_dir.rmdir()
+        except OSError:
+            pass
+
+    remaining_lines = lines[:last_start]
+    log_file.write_text(
+        "\n".join(remaining_lines) + ("\n" if remaining_lines else ""), encoding="utf-8"
+    )
+
+    return restored, skipped, None
 
 
 def main():
@@ -78,9 +142,23 @@ def main():
     parser.add_argument("folder", help="Path to the folder containing PDFs")
     parser.add_argument("--dry-run", action="store_true", help="Preview actions without moving files")
     parser.add_argument("--log", default="organizer_log.txt", help="Log file name for recorded moves")
+    parser.add_argument("--undo", action="store_true", help="Undo the last real organize run")
     args = parser.parse_args()
 
-    process_folder(args.folder, dry_run=args.dry_run, log_path=args.log)
+    if args.undo:
+        log_path = str(Path(args.folder) / args.log)
+        restored, skipped, error = undo_last_run(args.folder, log_path)
+        if error:
+            print(error)
+            return
+        for line in restored:
+            print(f"[RESTORED] {line}")
+        for line in skipped:
+            print(f"[SKIPPED]  {line}")
+        print(f"Undo complete — {len(restored)} file(s) restored, {len(skipped)} skipped.")
+        return
+
+    process_folder(args.folder, dry_run=args.dry_run, log_path=str(Path(args.folder) / args.log))
 
 
 if __name__ == "__main__":
