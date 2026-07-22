@@ -29,13 +29,17 @@ def unique_path(target_path):
         counter += 1
 
 
-def process_folder(source_dir, dry_run=True, log_path=None):
+def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
     source = Path(source_dir)
     pdf_files = sorted(source.glob("*.pdf"))
 
     if not pdf_files:
-        print(f"No PDF files found in {source}")
-        return
+        message = f"No PDF files found in {source}"
+        if on_action:
+            on_action(message)
+        else:
+            print(message)
+        return []
 
     log_lines = []
 
@@ -50,7 +54,11 @@ def process_folder(source_dir, dry_run=True, log_path=None):
         dest_path = unique_path(dest_dir / new_name)
 
         action = f"{pdf_path.name}  ->  {category}/{dest_path.name}"
-        print(("[DRY RUN] " if dry_run else "[MOVED]   ") + action)
+        line = ("[DRY RUN] " if dry_run else "[MOVED]   ") + action
+        if on_action:
+            on_action(line)
+        else:
+            print(line)
         log_lines.append(action)
 
         if not dry_run:
@@ -60,6 +68,8 @@ def process_folder(source_dir, dry_run=True, log_path=None):
     if not dry_run and log_path:
         with open(log_path, "a", encoding="utf-8") as f:
             f.write("\n".join(log_lines) + "\n")
+
+    return log_lines
 
 
 def main():
