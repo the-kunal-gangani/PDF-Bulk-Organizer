@@ -44,7 +44,7 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
     log_lines = []
 
     for pdf_path in pdf_files:
-        text = extract_text(pdf_path)
+        text, used_ocr = extract_text(pdf_path)
         category = classify(text)
         date = extract_date(text)
         sender = extract_sender(text)
@@ -53,7 +53,8 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
         dest_dir = source / category
         dest_path = unique_path(dest_dir / new_name)
 
-        action = f"{pdf_path.name}  ->  {category}/{dest_path.name}"
+        ocr_tag = " [OCR]" if used_ocr else ""
+        action = f"{pdf_path.name}{ocr_tag}  ->  {category}/{dest_path.name}"
         line = ("[DRY RUN] " if dry_run else "[MOVED]   ") + action
         if on_action:
             on_action(line)
