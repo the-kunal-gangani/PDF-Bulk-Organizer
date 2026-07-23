@@ -65,6 +65,8 @@ CATEGORY_COLORS = {
     "Unsorted": "#A0AEC0",
 }
 
+FALLBACK_COLOR_PALETTE = ["#F6AD55", "#81E6D9", "#D6BCFA", "#FBB6CE", "#9AE6B4", "#FEB2B2"]
+
 
 def load_recent_folders():
     if not RECENT_FOLDERS_PATH.exists():
@@ -424,6 +426,10 @@ class OrganizerApp:
         self.folder_path = ctk.StringVar()
         self.is_running = False
         self.stop_event = threading.Event()
+        self.log_entries = []
+        self.category_filters = {}
+        self.custom_category_colors = {}
+        self.filter_chip_widgets = {}
 
         self._build_header()
         self._build_input_row()
@@ -431,6 +437,7 @@ class OrganizerApp:
         self._build_config_row()
         self._build_status_row()
         self._build_summary_row()
+        self._build_filter_row()
         self._build_log_area()
         self._setup_drag_and_drop()
 
@@ -626,6 +633,69 @@ class OrganizerApp:
             chip.pack(side="left", padx=(0, 8))
             self.summary_chip_widgets.append(chip)
 
+    def _get_category_color(self, category):
+        if category in CATEGORY_COLORS:
+            return CATEGORY_COLORS[category]
+        if category in self.custom_category_colors:
+            return self.custom_category_colors[category]
+        color = FALLBACK_COLOR_PALETTE[len(self.custom_category_colors) % len(FALLBACK_COLOR_PALETTE)]
+        self.custom_category_colors[category] = color
+        return color
+
+    def _known_categories(self):
+        names = list(CATEGORY_COLORS.keys())
+        try:
+            config_categories = classifier.get_current_config()["categories"].keys()
+            for name in config_categories:
+                if name not in names:
+                    names.append(name)
+        except Exception:
+            pass
+        return names
+
+    def _build_filter_row(self):
+        self.filter_container = ctk.CTkFrame(self.root, fg_color="transparent")
+        self.filter_container.pack(fill="x", padx=24, pady=(0, 6))
+
+        ctk.CTkLabel(
+            self.filter_container, text="Show:", font=ctk.CTkFont(size=11), text_color="#718096"
+        ).pack(side="left", padx=(0, 8))
+
+        self.filter_chips_frame = ctk.CTkFrame(self.filter_container, fg_color="transparent")
+        self.filter_chips_frame.pack(side="left", fill="x", expand=True)
+
+        self._rebuild_filter_chips()
+
+    def _rebuild_filter_chips(self):
+        for widget in self.filter_chips_frame.winfo_children():
+            widget.destroy()
+        self.filter_chip_widgets = {}
+
+        for category in self._known_categories():
+            if category not in self.category_filters:
+                self.category_filters[category] = tk.BooleanVar(value=True)
+
+            color = self._get_category_color(category)
+            chip = ctk.CTkCheckBox(
+                self.filter_chips_frame, text=category,
+                variable=self.category_filters[category],
+                command=self._apply_log_filter,
+                font=ctk.CTkFont(size=11),
+                fg_color=color, hover_color=color, checkbox_width=16, checkbox_height=16,
+                border_color="#4A5568"
+            )
+            chip.pack(side="left", padx=(0, 10))
+            self.filter_chip_widgets[category] = chip
+
+    def _apply_log_filter(self):
+        self.log_box.configure(state="normal")
+        self.log_box.delete("1.0", "end")
+        for text, tag in self.log_entries:
+            if tag == "plain" or self.category_filters.get(tag, tk.BooleanVar(value=True)).get():
+                self.log_box.insert("end", text + "\n", tag)
+        self.log_box.see("end")
+        self.log_box.configure(state="disabled")
+
     def _build_log_area(self):
         frame = ctk.CTkFrame(self.root, fg_color="#171923", corner_radius=12)
         frame.pack(fill="both", expand=True, padx=24, pady=(8, 20))
@@ -699,17 +769,29 @@ class OrganizerApp:
         self.recent_menu.set("Recent ▾")
 
     def _append_log(self, text):
-        self.log_box.configure(state="normal")
         tag = "plain"
         for category in CATEGORY_COLORS:
             if f"-> {category}/" in text or f"->  {category}/" in text:
                 tag = category
                 break
+        if tag == "plain":
+            for category in self.category_filters:
+                if f"-> {category}/" in text or f"->  {category}/" in text:
+                    tag = category
+                    break
+
+        self.log_entries.append((text, tag))
+
+        if tag != "plain" and not self.category_filters.get(tag, tk.BooleanVar(value=True)).get():
+            return
+
+        self.log_box.configure(state="normal")
         self.log_box.insert("end", text + "\n", tag)
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
 
     def _clear_log(self):
+        self.log_entries = []
         self.log_box.configure(state="normal")
         self.log_box.delete("1.0", "end")
         self.log_box.configure(state="disabled")
