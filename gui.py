@@ -9,8 +9,45 @@ import json
 from organizer import process_folder, undo_last_run
 import classifier
 
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    DND_AVAILABLE = True
+except ImportError:
+    DND_AVAILABLE = False
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+if DND_AVAILABLE:
+    class DnDCTk(ctk.CTk, TkinterDnD.DnDWrapper):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.TkdndVersion = TkinterDnD._require(self)
+else:
+    DnDCTk = ctk.CTk
+
+
+def parse_dropped_path(data):
+    data = data.strip()
+    parts = []
+    current = ""
+    in_brace = False
+    for ch in data:
+        if ch == "{":
+            in_brace = True
+            continue
+        if ch == "}":
+            in_brace = False
+            continue
+        if ch == " " and not in_brace:
+            if current:
+                parts.append(current)
+                current = ""
+            continue
+        current += ch
+    if current:
+        parts.append(current)
+    return parts[0] if parts else data
 
 RECENT_FOLDERS_PATH = Path(__file__).parent / "recent_folders.json"
 MAX_RECENT_FOLDERS = 6
@@ -302,6 +339,7 @@ class OrganizerApp:
         self._build_status_row()
         self._build_summary_row()
         self._build_log_area()
+        self._setup_drag_and_drop()
 
     def _build_header(self):
         header = ctk.CTkFrame(self.root, fg_color="#1A202C", corner_radius=0, height=90)
@@ -333,7 +371,7 @@ class OrganizerApp:
 
         self.path_entry = ctk.CTkEntry(
             row, textvariable=self.folder_path,
-            placeholder_text="Paste a folder path or click Browse...",
+            placeholder_text="Paste a path, click Browse, or drag a folder here...",
             height=42, font=ctk.CTkFont(size=13), corner_radius=10
         )
         self.path_entry.pack(side="left", fill="x", expand=True)
@@ -509,6 +547,44 @@ class OrganizerApp:
             raw_text_widget.tag_config(category, foreground=color)
         raw_text_widget.tag_config("plain", foreground="#CBD5E0")
 
+    def _setup_drag_and_drop(self):
+        if not DND_AVAILABLE:
+            self.status_label.configure(
+                text="Tip: install tkinterdnd2 to enable drag-and-drop folder support.",
+                text_color="#718096"
+            )
+            return
+
+        self.root.drop_target_register(DND_FILES)
+        self.root.dnd_bind("<<Drop>>", self._on_drop)
+
+        self.path_entry.drop_target_register(DND_FILES)
+        self.path_entry.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _on_drop(self, event):
+        if self.is_running:
+            return
+        dropped_path = parse_dropped_path(event.data)
+        path = Path(dropped_path)
+
+        if not path.exists():
+            messagebox.showerror("Invalid Drop", f"Could not find:\n{dropped_path}")
+            return
+
+        if path.is_file():
+            messagebox.showwarning(
+                "Drop a Folder, Not a File",
+                "Please drag and drop the folder containing your PDFs, not an individual file."
+            )
+            return
+
+        if not path.is_dir():
+            messagebox.showerror("Invalid Drop", "That doesn't look like a folder.")
+            return
+
+        self.folder_path.set(str(path))
+        self.status_label.configure(text=f"Folder set from drag-and-drop: {path.name}", text_color="#68D391")
+
     def browse_folder(self):
         selected = filedialog.askdirectory(title="Select the folder containing your PDFs")
         if selected:
@@ -664,7 +740,7 @@ class OrganizerApp:
 
 
 def main():
-    root = ctk.CTk()
+    root = DnDCTk()
     OrganizerApp(root)
     root.mainloop()
 

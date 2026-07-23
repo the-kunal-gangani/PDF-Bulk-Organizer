@@ -2,3 +2,4 @@ pdfplumber
 pytesseract
 customtkinter
 pyyaml
+tkinterdnd2
