@@ -54,6 +54,237 @@ def save_recent_folder(folder_path):
     return recent
 
 
+class CategoryEditorWindow(ctk.CTkToplevel):
+    def __init__(self, parent, on_saved=None):
+        super().__init__(parent)
+        self.on_saved = on_saved
+        self.title("Category Editor")
+        self.geometry("760x520")
+        self.minsize(640, 440)
+        self.transient(parent)
+        self.grab_set()
+
+        config = classifier.get_current_config()
+        self.categories = config["categories"]
+        self.scoring = config["scoring"]
+        self.current_category = None
+        self.dirty = False
+
+        self._build_layout()
+        self._populate_category_list()
+
+        if self.categories:
+            first_name = next(iter(self.categories))
+            self._select_category(first_name)
+
+    def _build_layout(self):
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=16, pady=16)
+
+        left = ctk.CTkFrame(container, fg_color="#1A202C", corner_radius=12, width=220)
+        left.pack(side="left", fill="y", padx=(0, 12))
+        left.pack_propagate(False)
+
+        ctk.CTkLabel(
+            left, text="Categories", font=ctk.CTkFont(size=13, weight="bold"), text_color="#E2E8F0"
+        ).pack(anchor="w", padx=14, pady=(12, 6))
+
+        self.category_list_frame = ctk.CTkScrollableFrame(left, fg_color="transparent")
+        self.category_list_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        ctk.CTkButton(
+            left, text="+ New Category", height=34, corner_radius=8,
+            fg_color="#2B6CB0", hover_color="#2C5282",
+            command=self._new_category
+        ).pack(fill="x", padx=8, pady=(0, 12))
+
+        right = ctk.CTkFrame(container, fg_color="#1A202C", corner_radius=12)
+        right.pack(side="left", fill="both", expand=True)
+
+        name_row = ctk.CTkFrame(right, fg_color="transparent")
+        name_row.pack(fill="x", padx=16, pady=(14, 6))
+
+        ctk.CTkLabel(
+            name_row, text="Category Name", font=ctk.CTkFont(size=12, weight="bold"), text_color="#E2E8F0"
+        ).pack(anchor="w")
+        self.name_entry = ctk.CTkEntry(name_row, height=36, corner_radius=8, font=ctk.CTkFont(size=13))
+        self.name_entry.pack(fill="x", pady=(4, 0))
+
+        self.strong_box = self._build_keyword_section(
+            right, "Strong keywords (near-certain — one per line)"
+        )
+        self.weak_box = self._build_keyword_section(
+            right, "Weak keywords (supporting signals — one per line)"
+        )
+        self.exclude_box = self._build_keyword_section(
+            right, "Exclude keywords (any match vetoes this category — one per line)"
+        )
+
+        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom.pack(fill="x", padx=16, pady=(0, 16))
+
+        self.delete_btn = ctk.CTkButton(
+            bottom, text="🗑 Delete Category", height=38, corner_radius=8,
+            fg_color="#9C4221", hover_color="#7B341E",
+            command=self._delete_current_category
+        )
+        self.delete_btn.pack(side="left")
+
+        ctk.CTkButton(
+            bottom, text="Cancel", height=38, corner_radius=8, width=100,
+            fg_color="#2D3748", hover_color="#4A5568",
+            command=self._on_cancel
+        ).pack(side="right", padx=(8, 0))
+
+        ctk.CTkButton(
+            bottom, text="💾 Save All Changes", height=38, corner_radius=8, width=180,
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#2F855A", hover_color="#276749",
+            command=self._save_all
+        ).pack(side="right")
+
+    def _build_keyword_section(self, parent, label_text):
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=16, pady=(6, 0))
+
+        ctk.CTkLabel(
+            frame, text=label_text, font=ctk.CTkFont(size=11), text_color="#A0AEC0"
+        ).pack(anchor="w")
+
+        box = ctk.CTkTextbox(
+            frame, height=64, fg_color="#171923", font=ctk.CTkFont(family="Consolas", size=12),
+            corner_radius=8, wrap="word"
+        )
+        box.pack(fill="both", expand=True, pady=(4, 0))
+        return box
+
+    def _populate_category_list(self):
+        for widget in self.category_list_frame.winfo_children():
+            widget.destroy()
+
+        self.category_buttons = {}
+        for name in self.categories:
+            btn = ctk.CTkButton(
+                self.category_list_frame, text=name, height=32, corner_radius=6,
+                anchor="w", fg_color="transparent", hover_color="#2D3748",
+                font=ctk.CTkFont(size=12),
+                command=lambda n=name: self._select_category(n)
+            )
+            btn.pack(fill="x", pady=2)
+            self.category_buttons[name] = btn
+
+        self._highlight_selected()
+
+    def _highlight_selected(self):
+        for name, btn in self.category_buttons.items():
+            if name == self.current_category:
+                btn.configure(fg_color="#2B6CB0")
+            else:
+                btn.configure(fg_color="transparent")
+
+    def _save_current_edits_to_memory(self):
+        if self.current_category is None:
+            return
+        new_name = self.name_entry.get().strip()
+        if not new_name:
+            return
+
+        strong = [line.strip() for line in self.strong_box.get("1.0", "end").splitlines() if line.strip()]
+        weak = [line.strip() for line in self.weak_box.get("1.0", "end").splitlines() if line.strip()]
+        exclude = [line.strip() for line in self.exclude_box.get("1.0", "end").splitlines() if line.strip()]
+
+        if new_name != self.current_category:
+            self.categories.pop(self.current_category, None)
+
+        self.categories[new_name] = {"strong": strong, "weak": weak, "exclude": exclude}
+        self.current_category = new_name
+
+    def _select_category(self, name):
+        self._save_current_edits_to_memory()
+
+        self.current_category = name
+        data = self.categories.get(name, {"strong": [], "weak": [], "exclude": []})
+
+        self.name_entry.delete(0, "end")
+        self.name_entry.insert(0, name)
+
+        self.strong_box.delete("1.0", "end")
+        self.strong_box.insert("1.0", "\n".join(data.get("strong", [])))
+
+        self.weak_box.delete("1.0", "end")
+        self.weak_box.insert("1.0", "\n".join(data.get("weak", [])))
+
+        self.exclude_box.delete("1.0", "end")
+        self.exclude_box.insert("1.0", "\n".join(data.get("exclude", [])))
+
+        if name not in self.category_buttons:
+            self._populate_category_list()
+        else:
+            self._highlight_selected()
+
+    def _new_category(self):
+        self._save_current_edits_to_memory()
+
+        base_name = "New Category"
+        name = base_name
+        counter = 1
+        while name in self.categories:
+            counter += 1
+            name = f"{base_name} {counter}"
+
+        self.categories[name] = {"strong": [], "weak": [], "exclude": []}
+        self._populate_category_list()
+        self._select_category(name)
+        self.name_entry.focus()
+        self.name_entry.select_range(0, "end")
+
+    def _delete_current_category(self):
+        if self.current_category is None:
+            return
+        if len(self.categories) <= 1:
+            messagebox.showwarning("Cannot Delete", "At least one category must remain.")
+            return
+
+        confirm = messagebox.askyesno(
+            "Delete Category", f"Delete the category '{self.current_category}'?\nFiles will fall back to Unsorted for this category going forward."
+        )
+        if not confirm:
+            return
+
+        self.categories.pop(self.current_category, None)
+        self.current_category = None
+        self._populate_category_list()
+
+        if self.categories:
+            self._select_category(next(iter(self.categories)))
+        else:
+            self.name_entry.delete(0, "end")
+            self.strong_box.delete("1.0", "end")
+            self.weak_box.delete("1.0", "end")
+            self.exclude_box.delete("1.0", "end")
+
+    def _save_all(self):
+        self._save_current_edits_to_memory()
+
+        empty_names = [name for name in self.categories if not name.strip()]
+        if empty_names:
+            messagebox.showerror("Invalid Category", "Category names cannot be empty.")
+            return
+
+        success, error = classifier.write_config(self.categories, self.scoring)
+        if not success:
+            messagebox.showerror("Save Failed", error)
+            return
+
+        messagebox.showinfo("Saved", f"Saved {len(self.categories)} categories to config.yaml.")
+        if self.on_saved:
+            self.on_saved()
+        self.destroy()
+
+    def _on_cancel(self):
+        self.destroy()
+
+
 class OrganizerApp:
     def __init__(self, root):
         self.root = root
@@ -164,7 +395,7 @@ class OrganizerApp:
         ctk.CTkButton(
             frame, text="⚙ Edit Categories", width=140, height=30, corner_radius=8,
             font=ctk.CTkFont(size=11), fg_color="#2D3748", hover_color="#4A5568",
-            command=self.open_config
+            command=self.open_category_editor
         ).pack(side="left", padx=(8, 0))
 
         ctk.CTkButton(
@@ -203,6 +434,12 @@ class OrganizerApp:
                 subprocess.Popen(["xdg-open", str(config_path)])
         except Exception as exc:
             messagebox.showerror("Could Not Open File", f"Please open this file manually:\n{config_path}\n\n{exc}")
+
+    def open_category_editor(self):
+        CategoryEditorWindow(self.root, on_saved=self._on_categories_saved)
+
+    def _on_categories_saved(self):
+        self._refresh_config_status()
 
     def reload_config(self):
         classifier.reload_config()

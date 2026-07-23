@@ -133,6 +133,85 @@ def get_config_status():
     }
 
 
+CONFIG_HEADER_COMMENT = """# PDF Bulk Organizer — category configuration
+#
+# Edit this file (or use the in-app Category Editor) to add, remove, or tune
+# categories without touching any code.
+#
+# Each category has three keyword lists:
+#   strong  — near-certain identifiers (worth more points, e.g. "invoice number")
+#   weak    — supporting signals (worth fewer points, e.g. "invoice")
+#   exclude — if ANY of these appear, this category is vetoed entirely
+#
+# scoring:
+#   strong_weight     — points awarded per strong keyword match
+#   weak_weight       — points awarded per weak keyword match
+#   qualify_threshold — a category must reach this score to be selected
+"""
+
+
+def get_current_config():
+    return {
+        "categories": {
+            name: {
+                "strong": list(group.get("strong", [])),
+                "weak": list(group.get("weak", [])),
+                "exclude": list(group.get("exclude", [])),
+            }
+            for name, group in _state["category_keywords"].items()
+        },
+        "scoring": dict(_state["scoring"]),
+    }
+
+
+def write_config(categories, scoring, config_path=None):
+    if not YAML_AVAILABLE:
+        return False, "PyYAML is not installed — run: pip install pyyaml"
+
+    path = Path(config_path) if config_path else CONFIG_PATH
+
+    if not isinstance(categories, dict) or not categories:
+        return False, "At least one category is required."
+
+    cleaned_categories = {}
+    for name, group in categories.items():
+        clean_name = str(name).strip()
+        if not clean_name:
+            return False, "Category names cannot be empty."
+        cleaned_categories[clean_name] = {
+            "strong": [str(k).strip().lower() for k in group.get("strong", []) if str(k).strip()],
+            "weak": [str(k).strip().lower() for k in group.get("weak", []) if str(k).strip()],
+            "exclude": [str(k).strip().lower() for k in group.get("exclude", []) if str(k).strip()],
+        }
+
+    try:
+        strong_weight = int(scoring.get("strong_weight", DEFAULT_SCORING["strong_weight"]))
+        weak_weight = int(scoring.get("weak_weight", DEFAULT_SCORING["weak_weight"]))
+        qualify_threshold = int(scoring.get("qualify_threshold", DEFAULT_SCORING["qualify_threshold"]))
+    except (TypeError, ValueError):
+        return False, "Scoring values must be whole numbers."
+
+    data = {
+        "categories": cleaned_categories,
+        "scoring": {
+            "strong_weight": strong_weight,
+            "weak_weight": weak_weight,
+            "qualify_threshold": qualify_threshold,
+        },
+    }
+
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(CONFIG_HEADER_COMMENT)
+            f.write("\n")
+            yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    except Exception as exc:
+        return False, f"Failed to write config.yaml: {exc}"
+
+    reload_config(path)
+    return True, None
+
+
 def classify(text):
     if not text:
         return "Unsorted"

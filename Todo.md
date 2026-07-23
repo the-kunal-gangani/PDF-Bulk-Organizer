@@ -22,3 +22,21 @@ A bunch of directions we could take this — happy to build any of these next:
 My pick if you want the highest-impact next step: **OCR support** (handles a whole class of files it currently can't) + **packaging as a .exe** (turns it from "a script" into "an actual app you can hand someone"). Those two together make it a much stronger portfolio piece.
 
 Want me to start with one of these?
+
+We've built out basically the entire feature wishlist at this point. Here's what's left on the table:
+
+## Finish the product
+- **📦 Package as a `.exe`** — the one we deliberately held off on. Now that everything's built and tested, this is probably the natural "final" step to make it a real double-click app
+- **Drag-and-drop folder support** — drag a folder straight onto the window instead of Browse/Recent dropdown
+- **Scoring weights in the editor** — right now strong/weak/exclude are editable, but the scoring numbers (strong_weight, threshold, etc.) still need manual YAML editing
+
+## Polish / documentation
+- **Updated README** for GitHub reflecting all the new features (OCR, undo, duplicates, config editor, GUI)
+- **Updated project structure / resume blurb** — this project now has way more depth than the original CV bullet we wrote weeks ago
+
+## Testing
+- Try it on your actual real messy PDF folder end-to-end with everything (OCR + config editor + duplicates + undo) to catch any real-world edge case we haven't hit in synthetic tests
+
+My honest take: this project is genuinely feature-complete now. I'd suggest **packaging as `.exe`** next since that's the step that turns it from "a very solid Python tool" into "a finished, shareable product" — and then updating the README/resume framing to reflect everything it does now.
+
+Want to go with that, or something else first?
