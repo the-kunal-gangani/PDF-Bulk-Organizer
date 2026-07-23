@@ -359,6 +359,11 @@ class LiquidProgressBar(ctk.CTkFrame):
     def set(self, fraction):
         self.target_percent = max(0.0, min(1.0, fraction)) * 100
 
+    def force_zero(self):
+        self.target_percent = 0.0
+        self.display_percent = 0.0
+        self._render_wave()
+
     def _tick(self):
         speed = 0.18 if self.animating else 0.06
         self.display_percent += (self.target_percent - self.display_percent) * speed
@@ -781,7 +786,7 @@ class OrganizerApp:
 
     def _finish_undo(self, restored, skipped, error):
         self.progress.stop()
-        self.progress.set(0)
+        self.progress.force_zero()
         self._set_buttons_enabled(True)
         self.is_running = False
 
@@ -838,7 +843,7 @@ class OrganizerApp:
 
     def _finish_run(self, folder, results, category_counts, dry_run, stopped_early):
         self.progress.stop()
-        self.progress.set(0)
+        self.progress.force_zero()
         self._set_buttons_enabled(True)
         self.is_running = False
         self._render_summary(category_counts)
@@ -847,14 +852,14 @@ class OrganizerApp:
 
         if stopped_early and not dry_run:
             self.status_label.configure(
-                text=f"Stopped — {count} file(s) sorted before stopping.", text_color="#F6AD55"
+                text=f"⏹ Stopped by user — {count} file(s) sorted before stopping.", text_color="#F6AD55"
             )
             self._prompt_stop_choice(folder, count)
             return
 
         if stopped_early and dry_run:
             self.status_label.configure(
-                text=f"Preview stopped — {count} file(s) reviewed before stopping.", text_color="#F6AD55"
+                text=f"⏹ Preview stopped by user — {count} file(s) reviewed before stopping.", text_color="#F6AD55"
             )
             return
 
