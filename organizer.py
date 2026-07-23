@@ -40,11 +40,12 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
             on_action(message)
         else:
             print(message)
-        return []
+        return [], {}
 
     log_lines = []
     move_records = []
     seen_hashes = {}
+    category_counts = {}
 
     for pdf_path in pdf_files:
         text, used_ocr = extract_text(pdf_path)
@@ -73,6 +74,8 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
         if not is_duplicate and content_hash is not None:
             seen_hashes[content_hash] = dest_path.name
 
+        category_counts[category] = category_counts.get(category, 0) + 1
+
         ocr_tag = " [OCR]" if used_ocr else ""
         action = f"{pdf_path.name}{ocr_tag}{dup_tag}  ->  {category}/{dest_path.name}"
         line = ("[DRY RUN] " if dry_run else "[MOVED]   ") + action
@@ -94,7 +97,7 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
             f.write(f"### RUN {timestamp} ###\n")
             f.write("\n".join(move_records) + "\n")
 
-    return log_lines
+    return log_lines, category_counts
 
 
 def undo_last_run(source_dir, log_path):
@@ -176,7 +179,12 @@ def main():
         print(f"Undo complete — {len(restored)} file(s) restored, {len(skipped)} skipped.")
         return
 
-    process_folder(args.folder, dry_run=args.dry_run, log_path=str(Path(args.folder) / args.log))
+    log_lines, category_counts = process_folder(
+        args.folder, dry_run=args.dry_run, log_path=str(Path(args.folder) / args.log)
+    )
+    if category_counts:
+        summary = ", ".join(f"{cat}: {count}" for cat, count in category_counts.items())
+        print(f"\nSummary — {summary}")
 
 
 if __name__ == "__main__":

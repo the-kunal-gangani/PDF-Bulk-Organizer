@@ -4,12 +4,16 @@ from pathlib import Path
 import threading
 import subprocess
 import sys
+import json
 
 from organizer import process_folder, undo_last_run
 import classifier
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+RECENT_FOLDERS_PATH = Path(__file__).parent / "recent_folders.json"
+MAX_RECENT_FOLDERS = 6
 
 CATEGORY_COLORS = {
     "Invoice": "#4FD1C5",
@@ -21,6 +25,33 @@ CATEGORY_COLORS = {
     "Duplicates": "#FC8181",
     "Unsorted": "#A0AEC0",
 }
+
+
+def load_recent_folders():
+    if not RECENT_FOLDERS_PATH.exists():
+        return []
+    try:
+        with open(RECENT_FOLDERS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return [p for p in data if isinstance(p, str)]
+    except Exception:
+        pass
+    return []
+
+
+def save_recent_folder(folder_path):
+    folder_str = str(folder_path)
+    recent = load_recent_folders()
+    recent = [p for p in recent if p != folder_str]
+    recent.insert(0, folder_str)
+    recent = recent[:MAX_RECENT_FOLDERS]
+    try:
+        with open(RECENT_FOLDERS_PATH, "w", encoding="utf-8") as f:
+            json.dump(recent, f, indent=2)
+    except Exception:
+        pass
+    return recent
 
 
 class OrganizerApp:
@@ -38,6 +69,7 @@ class OrganizerApp:
         self._build_action_row()
         self._build_config_row()
         self._build_status_row()
+        self._build_summary_row()
         self._build_log_area()
 
     def _build_header(self):
@@ -80,6 +112,17 @@ class OrganizerApp:
             fg_color="#2D3748", hover_color="#4A5568",
             command=self.browse_folder
         ).pack(side="left", padx=(10, 0))
+
+        recent = load_recent_folders()
+        self.recent_menu = ctk.CTkOptionMenu(
+            row, width=130, height=42, corner_radius=10,
+            values=recent if recent else ["No recent folders"],
+            fg_color="#2D3748", button_color="#4A5568", button_hover_color="#718096",
+            dropdown_fg_color="#2D3748",
+            command=self.select_recent_folder
+        )
+        self.recent_menu.set("Recent ▾")
+        self.recent_menu.pack(side="left", padx=(10, 0))
 
     def _build_action_row(self):
         row = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -184,6 +227,31 @@ class OrganizerApp:
         self.progress.pack(side="right", fill="x", expand=True, padx=(16, 0))
         self.progress.set(0)
 
+    def _build_summary_row(self):
+        self.summary_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        self.summary_frame.pack(fill="x", padx=24, pady=(0, 4))
+        self.summary_chip_widgets = []
+
+    def _clear_summary(self):
+        for widget in self.summary_chip_widgets:
+            widget.destroy()
+        self.summary_chip_widgets = []
+
+    def _render_summary(self, category_counts):
+        self._clear_summary()
+        if not category_counts:
+            return
+        for category, count in category_counts.items():
+            color = CATEGORY_COLORS.get(category, "#A0AEC0")
+            chip = ctk.CTkLabel(
+                self.summary_frame, text=f"{category}: {count}",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                fg_color=color, text_color="#1A202C",
+                corner_radius=14, padx=12, pady=4
+            )
+            chip.pack(side="left", padx=(0, 8))
+            self.summary_chip_widgets.append(chip)
+
     def _build_log_area(self):
         frame = ctk.CTkFrame(self.root, fg_color="#171923", corner_radius=12)
         frame.pack(fill="both", expand=True, padx=24, pady=(8, 20))
@@ -208,6 +276,15 @@ class OrganizerApp:
         selected = filedialog.askdirectory(title="Select the folder containing your PDFs")
         if selected:
             self.folder_path.set(selected)
+
+    def select_recent_folder(self, choice):
+        if choice and choice != "No recent folders":
+            self.folder_path.set(choice)
+
+    def _refresh_recent_menu(self):
+        recent = load_recent_folders()
+        self.recent_menu.configure(values=recent if recent else ["No recent folders"])
+        self.recent_menu.set("Recent ▾")
 
     def _append_log(self, text):
         self.log_box.configure(state="normal")
@@ -274,6 +351,7 @@ class OrganizerApp:
         self.is_running = True
         self._set_buttons_enabled(False)
         self._clear_log()
+        self._clear_summary()
         self.progress.start()
         self.status_label.configure(text="Undoing last run...", text_color="#F6AD55")
 
@@ -310,6 +388,7 @@ class OrganizerApp:
         self.is_running = True
         self._set_buttons_enabled(False)
         self._clear_log()
+        self._clear_summary()
         self.progress.start()
         self.status_label.configure(
             text="Previewing changes (no files touched)..." if dry_run else "Organizing files...",
@@ -318,19 +397,22 @@ class OrganizerApp:
 
         def worker():
             log_path = str(folder / "organizer_log.txt") if not dry_run else None
-            results = process_folder(
+            results, category_counts = process_folder(
                 folder, dry_run=dry_run, log_path=log_path,
                 on_action=lambda line: self.root.after(0, self._append_log, line)
             )
-            self.root.after(0, self._finish_run, results, dry_run)
+            save_recent_folder(folder)
+            self.root.after(0, self._refresh_recent_menu)
+            self.root.after(0, self._finish_run, results, category_counts, dry_run)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _finish_run(self, results, dry_run):
+    def _finish_run(self, results, category_counts, dry_run):
         self.progress.stop()
         self.progress.set(0)
         self._set_buttons_enabled(True)
         self.is_running = False
+        self._render_summary(category_counts)
 
         count = len(results)
         if dry_run:
