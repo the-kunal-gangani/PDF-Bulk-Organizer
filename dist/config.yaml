@@ -1,0 +1,99 @@
+# PDF Bulk Organizer — category configuration
+#
+# Edit this file to add, remove, or tune categories without touching any code.
+#
+# Each category has three keyword lists:
+#   strong  — near-certain identifiers (worth more points, e.g. "invoice number")
+#   weak    — supporting signals (worth fewer points, e.g. "invoice")
+#   exclude — if ANY of these appear, this category is vetoed entirely
+#             (used to stop academic/syllabus documents from false-matching
+#             Resume or Certificate just because of incidental word overlap)
+#
+# scoring:
+#   strong_weight     — points awarded per strong keyword match
+#   weak_weight       — points awarded per weak keyword match
+#   qualify_threshold — a category must reach this score to be selected
+#                       (a single strong match, or several weak matches, can qualify)
+
+categories:
+  Invoice:
+    strong:
+      - "invoice number"
+      - "tax invoice"
+      - "bill to"
+      - "amount due"
+    weak:
+      - "invoice"
+      - "payment receipt"
+      - "purchase order"
+      - "subtotal"
+    exclude: []
+
+  Resume:
+    strong:
+      - "curriculum vitae"
+      - "career objective"
+      - "professional summary"
+    weak:
+      - "resume"
+      - "work experience"
+      - "education"
+      - "skills"
+    exclude:
+      - "syllabus"
+      - "semester"
+      - "credits"
+      - "unit 1"
+      - "university"
+
+  Certificate:
+    strong:
+      - "certificate of completion"
+      - "has successfully completed"
+      - "this is to certify"
+    weak:
+      - "certified"
+      - "certificate"
+    exclude:
+      - "syllabus"
+      - "semester"
+      - "credits"
+      - "unit 1"
+      - "university"
+
+  Contract:
+    strong:
+      - "party of the first part"
+      - "hereby agree"
+      - "terms and conditions"
+    weak:
+      - "agreement"
+      - "contract"
+    exclude: []
+
+  Report:
+    strong:
+      - "executive summary"
+      - "quarterly report"
+      - "annual report"
+    weak:
+      - "findings"
+      - "report"
+    exclude: []
+
+  Offer Letter:
+    strong:
+      - "offer letter"
+      - "we are pleased to offer"
+      - "letter of appointment"
+      - "your date of joining"
+    weak:
+      - "appointment letter"
+      - "joining date"
+      - "ctc"
+    exclude: []
+
+scoring:
+  strong_weight: 3
+  weak_weight: 1
+  qualify_threshold: 3

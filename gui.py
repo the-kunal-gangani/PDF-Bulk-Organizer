@@ -51,7 +51,12 @@ def parse_dropped_path(data):
         parts.append(current)
     return parts[0] if parts else data
 
-RECENT_FOLDERS_PATH = Path(__file__).parent / "recent_folders.json"
+if getattr(sys, "frozen", False):
+    _BASE_DIR = Path(sys.executable).parent
+else:
+    _BASE_DIR = Path(__file__).parent
+
+RECENT_FOLDERS_PATH = _BASE_DIR / "recent_folders.json"
 MAX_RECENT_FOLDERS = 6
 
 CATEGORY_COLORS = {

@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 try:
     import yaml
@@ -6,7 +7,12 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
+if getattr(sys, "frozen", False):
+    _BASE_DIR = Path(sys.executable).parent
+else:
+    _BASE_DIR = Path(__file__).parent
+
+CONFIG_PATH = _BASE_DIR / "config.yaml"
 
 DEFAULT_CATEGORY_KEYWORDS = {
     "Invoice": {
