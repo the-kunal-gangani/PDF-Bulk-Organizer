@@ -419,7 +419,7 @@ class LiquidProgressBar(ctk.CTkFrame):
 class OrganizerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("PDF Bulk Organizer")
+        self.root.title("PaperTrail")
         self.root.geometry("820x600")
         self.root.minsize(700, 520)
 
@@ -447,7 +447,7 @@ class OrganizerApp:
         header.pack_propagate(False)
 
         ctk.CTkLabel(
-            header, text="📁 PDF Bulk Organizer",
+            header, text="📁 PaperTrail",
             font=ctk.CTkFont(family="Segoe UI", size=26, weight="bold"),
             text_color="#4FD1C5"
         ).pack(anchor="w", padx=24, pady=(14, 0))

@@ -1,4 +1,4 @@
-# PDF Bulk Organizer
+# PaperTrail
 
 A desktop tool that reads, classifies, and automatically organizes a folder full of unsorted PDFs — invoices, resumes, certificates, offer letters, and more — with OCR support, duplicate detection, undo, and a fully customizable classification system.
 
@@ -58,7 +58,7 @@ Folders full of PDFs — invoices, resumes, certificates, scanned documents — 
 ## Project Structure
 
 ```
-pdf_organizer/
+papertrail/
 ├── organizer.py         # Core logic — CLI entry point, file moving/renaming, undo, stop handling
 ├── classifier.py        # Keyword-based classification engine + config.yaml loading/saving
 ├── extractor.py         # PDF text extraction, OCR fallback, date/sender parsing, content hashing

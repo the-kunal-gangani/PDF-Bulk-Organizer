@@ -168,7 +168,7 @@ def undo_last_run(source_dir, log_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Bulk-organize PDFs by content.")
+    parser = argparse.ArgumentParser(description="PaperTrail — bulk-organize PDFs by content.")
     parser.add_argument("folder", help="Path to the folder containing PDFs")
     parser.add_argument("--dry-run", action="store_true", help="Preview actions without moving files")
     parser.add_argument("--log", default="organizer_log.txt", help="Log file name for recorded moves")
