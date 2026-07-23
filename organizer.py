@@ -30,7 +30,7 @@ def unique_path(target_path):
         counter += 1
 
 
-def process_folder(source_dir, dry_run=True, log_path=None, on_action=None, on_progress=None):
+def process_folder(source_dir, dry_run=True, log_path=None, on_action=None, on_progress=None, stop_check=None):
     source = Path(source_dir)
     pdf_files = sorted(source.glob("*.pdf"))
 
@@ -40,15 +40,20 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None, on_p
             on_action(message)
         else:
             print(message)
-        return [], {}
+        return [], {}, False
 
     log_lines = []
     move_records = []
     seen_hashes = {}
     category_counts = {}
     total_files = len(pdf_files)
+    stopped_early = False
 
     for index, pdf_path in enumerate(pdf_files, start=1):
+        if stop_check and stop_check():
+            stopped_early = True
+            break
+
         text, used_ocr = extract_text(pdf_path)
         content_hash = compute_content_hash(text, pdf_path)
 
@@ -101,7 +106,7 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None, on_p
             f.write(f"### RUN {timestamp} ###\n")
             f.write("\n".join(move_records) + "\n")
 
-    return log_lines, category_counts
+    return log_lines, category_counts, stopped_early
 
 
 def undo_last_run(source_dir, log_path):
@@ -183,7 +188,7 @@ def main():
         print(f"Undo complete — {len(restored)} file(s) restored, {len(skipped)} skipped.")
         return
 
-    log_lines, category_counts = process_folder(
+    log_lines, category_counts, stopped_early = process_folder(
         args.folder, dry_run=args.dry_run, log_path=str(Path(args.folder) / args.log)
     )
     if category_counts:

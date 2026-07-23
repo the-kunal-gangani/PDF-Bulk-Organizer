@@ -418,6 +418,7 @@ class OrganizerApp:
 
         self.folder_path = ctk.StringVar()
         self.is_running = False
+        self.stop_event = threading.Event()
 
         self._build_header()
         self._build_input_row()
@@ -506,7 +507,16 @@ class OrganizerApp:
             fg_color="#9C4221", hover_color="#7B341E",
             command=self.run_undo
         )
-        self.undo_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        self.undo_btn.pack(side="left", fill="x", expand=True, padx=(8, 8))
+
+        self.stop_btn = ctk.CTkButton(
+            row, text="⏹  Stop", height=46, corner_radius=12, width=90,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#C53030", hover_color="#9B2C2C",
+            state="disabled",
+            command=self.request_stop
+        )
+        self.stop_btn.pack(side="left", padx=(8, 0))
 
     def _build_config_row(self):
         frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -717,6 +727,12 @@ class OrganizerApp:
         self.dry_run_btn.configure(state=state)
         self.organize_btn.configure(state=state)
         self.undo_btn.configure(state=state)
+        self.stop_btn.configure(state="disabled" if enabled else "normal")
+
+    def request_stop(self):
+        self.stop_event.set()
+        self.status_label.configure(text="Stopping after the current file...", text_color="#F6AD55")
+        self.stop_btn.configure(state="disabled")
 
     def run_dry_run(self):
         folder = self._validate_folder()
@@ -785,6 +801,7 @@ class OrganizerApp:
 
     def _run_in_thread(self, folder, dry_run):
         self.is_running = True
+        self.stop_event.clear()
         self._set_buttons_enabled(False)
         self._clear_log()
         self._clear_summary()
@@ -805,18 +822,19 @@ class OrganizerApp:
                     {"text": f"Processing file {current} of {total}..."}
                 )
 
-            results, category_counts = process_folder(
+            results, category_counts, stopped_early = process_folder(
                 folder, dry_run=dry_run, log_path=log_path,
                 on_action=lambda line: self.root.after(0, self._append_log, line),
-                on_progress=report_progress
+                on_progress=report_progress,
+                stop_check=self.stop_event.is_set
             )
             save_recent_folder(folder)
             self.root.after(0, self._refresh_recent_menu)
-            self.root.after(0, self._finish_run, results, category_counts, dry_run)
+            self.root.after(0, self._finish_run, folder, results, category_counts, dry_run, stopped_early)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _finish_run(self, results, category_counts, dry_run):
+    def _finish_run(self, folder, results, category_counts, dry_run, stopped_early):
         self.progress.stop()
         self.progress.set(0)
         self._set_buttons_enabled(True)
@@ -824,6 +842,20 @@ class OrganizerApp:
         self._render_summary(category_counts)
 
         count = len(results)
+
+        if stopped_early and not dry_run:
+            self.status_label.configure(
+                text=f"Stopped — {count} file(s) sorted before stopping.", text_color="#F6AD55"
+            )
+            self._prompt_stop_choice(folder, count)
+            return
+
+        if stopped_early and dry_run:
+            self.status_label.configure(
+                text=f"Preview stopped — {count} file(s) reviewed before stopping.", text_color="#F6AD55"
+            )
+            return
+
         if dry_run:
             self.status_label.configure(
                 text=f"Preview complete — {count} file(s) reviewed.", text_color="#63B3ED"
@@ -833,6 +865,36 @@ class OrganizerApp:
                 text=f"Done — {count} file(s) organized.", text_color="#68D391"
             )
             messagebox.showinfo("Complete", f"Organized {count} file(s).\nLog saved to organizer_log.txt")
+
+    def _prompt_stop_choice(self, folder, sorted_count):
+        undo_choice = messagebox.askyesno(
+            "Sorting Stopped",
+            f"You stopped the process. {sorted_count} file(s) were already sorted before stopping — "
+            f"the rest remain untouched in the original folder.\n\n"
+            f"Undo the {sorted_count} file(s) already sorted, putting them back exactly as they were?\n\n"
+            f"Yes = Undo those {sorted_count} file(s) back to original names/location\n"
+            f"No = Keep those {sorted_count} file(s) sorted as-is; the rest stay unsorted until you run again"
+        )
+        if undo_choice:
+            self._run_stop_undo(folder)
+        else:
+            self.status_label.configure(
+                text=f"Kept {sorted_count} sorted file(s) as-is. Remaining files are still unsorted.",
+                text_color="#68D391"
+            )
+
+    def _run_stop_undo(self, folder):
+        self.is_running = True
+        self._set_buttons_enabled(False)
+        self.progress.start()
+        self.status_label.configure(text="Undoing sorted files...", text_color="#F6AD55")
+
+        def worker():
+            log_path = str(folder / "organizer_log.txt")
+            restored, skipped, error = undo_last_run(folder, log_path)
+            self.root.after(0, self._finish_undo, restored, skipped, error)
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 def main():
