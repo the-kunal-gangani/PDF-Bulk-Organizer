@@ -366,10 +366,10 @@ class LiquidProgressBar(ctk.CTkFrame):
         phase_speed = 0.35 if self.animating else 0.08
         self.phase += phase_speed
 
-        self._draw()
+        self._render_wave()
         self._after_id = self.after(45, self._tick)
 
-    def _draw(self):
+    def _render_wave(self):
         c = self.canvas
         c.delete("all")
 

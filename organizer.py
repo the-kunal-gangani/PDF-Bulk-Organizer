@@ -30,7 +30,7 @@ def unique_path(target_path):
         counter += 1
 
 
-def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
+def process_folder(source_dir, dry_run=True, log_path=None, on_action=None, on_progress=None):
     source = Path(source_dir)
     pdf_files = sorted(source.glob("*.pdf"))
 
@@ -46,8 +46,9 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
     move_records = []
     seen_hashes = {}
     category_counts = {}
+    total_files = len(pdf_files)
 
-    for pdf_path in pdf_files:
+    for index, pdf_path in enumerate(pdf_files, start=1):
         text, used_ocr = extract_text(pdf_path)
         content_hash = compute_content_hash(text, pdf_path)
 
@@ -90,6 +91,9 @@ def process_folder(source_dir, dry_run=True, log_path=None, on_action=None):
             original_name = pdf_path.name
             shutil.move(str(pdf_path), str(dest_path))
             move_records.append(f"{original_name}::{category}/{dest_path.name}")
+
+        if on_progress:
+            on_progress(index, total_files)
 
     if not dry_run and log_path and move_records:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
