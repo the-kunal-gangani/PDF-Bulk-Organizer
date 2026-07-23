@@ -1,10 +1,12 @@
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import filedialog, messagebox
 from pathlib import Path
 import threading
 import subprocess
 import sys
 import json
+import math
 
 from organizer import process_folder, undo_last_run
 import classifier
@@ -322,6 +324,91 @@ class CategoryEditorWindow(ctk.CTkToplevel):
         self.destroy()
 
 
+class LiquidProgressBar(ctk.CTkFrame):
+    def __init__(self, master, width=280, height=42,
+                 fill_color="#2B6CB0", fill_color_dark="#234E70",
+                 track_color="#171923", text_color="#F7FAFC", **kwargs):
+        super().__init__(master, fg_color=track_color, corner_radius=height // 3, **kwargs)
+
+        self.bar_width = width
+        self.bar_height = height
+        self.fill_color = fill_color
+        self.fill_color_dark = fill_color_dark
+        self.track_color = track_color
+        self.text_color = text_color
+
+        self.target_percent = 0.0
+        self.display_percent = 0.0
+        self.phase = 0.0
+        self.animating = False
+        self._after_id = None
+
+        self.canvas = tk.Canvas(
+            self, width=width, height=height, highlightthickness=0, bg=track_color, bd=0
+        )
+        self.canvas.pack(fill="both", expand=True, padx=2, pady=2)
+
+        self._tick()
+
+    def start(self):
+        self.animating = True
+
+    def stop(self):
+        self.animating = False
+
+    def set(self, fraction):
+        self.target_percent = max(0.0, min(1.0, fraction)) * 100
+
+    def _tick(self):
+        speed = 0.18 if self.animating else 0.06
+        self.display_percent += (self.target_percent - self.display_percent) * speed
+
+        phase_speed = 0.35 if self.animating else 0.08
+        self.phase += phase_speed
+
+        self._draw()
+        self._after_id = self.after(45, self._tick)
+
+    def _draw(self):
+        c = self.canvas
+        c.delete("all")
+
+        w, h = self.bar_width, self.bar_height
+        fill_x = (self.display_percent / 100.0) * w
+
+        amplitude_bg = 4 if self.animating else 1.5
+        amplitude_fg = 2.5 if self.animating else 1
+
+        bg_points = []
+        for y_step in range(0, h + 1, 3):
+            offset = amplitude_bg * math.sin((y_step / max(h, 1)) * (math.pi * 2) + self.phase * 0.8)
+            bg_points.append((fill_x + offset, y_step))
+
+        fg_points = []
+        for y_step in range(0, h + 1, 3):
+            offset = amplitude_fg * math.sin((y_step / max(h, 1)) * (math.pi * 2.4) + self.phase * 1.3 + 1.2)
+            fg_points.append((fill_x + offset, y_step))
+
+        if fill_x > 1:
+            bg_poly = [(0, 0)] + bg_points + [(0, h)]
+            flat_bg = [coord for point in bg_poly for coord in point]
+            c.create_polygon(flat_bg, fill=self.fill_color_dark, outline="", smooth=True)
+
+            fg_poly = [(0, 0)] + fg_points + [(0, h)]
+            flat_fg = [coord for point in fg_poly for coord in point]
+            c.create_polygon(flat_fg, fill=self.fill_color, outline="", smooth=True)
+
+        percent_text = f"{int(round(self.display_percent))}%"
+        c.create_text(
+            w / 2 + 1, h / 2 + 1, text=percent_text,
+            font=("Segoe UI Semibold", 13), fill="#000000", anchor="center"
+        )
+        c.create_text(
+            w / 2, h / 2, text=percent_text,
+            font=("Segoe UI Semibold", 13), fill=self.text_color, anchor="center"
+        )
+
+
 class OrganizerApp:
     def __init__(self, root):
         self.root = root
@@ -498,9 +585,8 @@ class OrganizerApp:
         )
         self.status_label.pack(side="left", fill="x", expand=True)
 
-        self.progress = ctk.CTkProgressBar(frame, height=6, corner_radius=3, mode="indeterminate")
-        self.progress.pack(side="right", fill="x", expand=True, padx=(16, 0))
-        self.progress.set(0)
+        self.progress = LiquidProgressBar(frame, width=220, height=40)
+        self.progress.pack(side="right", padx=(16, 0))
 
     def _build_summary_row(self):
         self.summary_frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -710,9 +796,19 @@ class OrganizerApp:
 
         def worker():
             log_path = str(folder / "organizer_log.txt") if not dry_run else None
+
+            def report_progress(current, total):
+                fraction = current / total if total else 0
+                self.root.after(0, self.progress.set, fraction)
+                self.root.after(
+                    0, self.status_label.configure,
+                    {"text": f"Processing file {current} of {total}..."}
+                )
+
             results, category_counts = process_folder(
                 folder, dry_run=dry_run, log_path=log_path,
-                on_action=lambda line: self.root.after(0, self._append_log, line)
+                on_action=lambda line: self.root.after(0, self._append_log, line),
+                on_progress=report_progress
             )
             save_recent_folder(folder)
             self.root.after(0, self._refresh_recent_menu)
