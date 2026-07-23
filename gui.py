@@ -513,10 +513,8 @@ class OrganizerApp:
             row, text="⏹  Stop", height=46, corner_radius=12, width=90,
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color="#C53030", hover_color="#9B2C2C",
-            state="disabled",
             command=self.request_stop
         )
-        self.stop_btn.pack(side="left", padx=(8, 0))
 
     def _build_config_row(self):
         frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -727,7 +725,11 @@ class OrganizerApp:
         self.dry_run_btn.configure(state=state)
         self.organize_btn.configure(state=state)
         self.undo_btn.configure(state=state)
-        self.stop_btn.configure(state="disabled" if enabled else "normal")
+        if enabled:
+            self.stop_btn.pack_forget()
+        else:
+            self.stop_btn.configure(state="normal")
+            self.stop_btn.pack(side="left", padx=(8, 0))
 
     def request_stop(self):
         self.stop_event.set()
